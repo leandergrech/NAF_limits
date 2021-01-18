@@ -35,15 +35,8 @@ class QModel:
 
     def __init__(self, obs_dim, act_dim, name, training_info=dict(), hidden_sizes=(100, 100), activation=tf.nn.tanh,
                  kernel_initializer=tf.compat.v1.random_uniform_initializer(-0.01, 0.01), early_stopping_patience=2,
-                 save_frequency=1000, directory=None, tb_log=None):
+                 save_frequency=1000):
 
-        # if tb_log is not None:
-        #     self.tensorboard_callback = [CustomTensorBoard(log_dir=os.path.join(tb_log, name), histogram_freq=1)]
-        # else:
-        #     self.tensorboard_callback = None
-
-
-        self.directory = directory
         self.save_frequency = save_frequency
         self.hidden_sizes = hidden_sizes
         self.activation = activation
@@ -119,20 +112,6 @@ class QModel:
         self.q_model = self.CustomModel(inputs=[inputs_state, inputs_action], outputs=Q, mother_class=self)
         self.q_model.compile(optimizer=self.optimizer, loss="mse", metrics=["mae"])
 
-
-        self.storage_management()
-
-    def storage_management(self):
-        pass
-        # checkpoint_dir = self.directory + self.__name__ + "/"
-        # self.ckpt = tf.train.Checkpoint(step=tf.Variable(1), model=self.q_model)
-        # self.manager = tf.train.CheckpointManager(self.ckpt, checkpoint_dir, max_to_keep=3)
-        # self.ckpt.restore(self.manager.latest_checkpoint)
-        # if self.manager.latest_checkpoint:
-        #     print("Restored from {}".format(self.manager.latest_checkpoint))
-        # else:
-        #     print("Initializing from scratch.")
-
     def fc(self, x, hidden_size, activation=tf.nn.tanh,
            kernel_initializer=tf.compat.v1.random_uniform_initializer(-0.01, 0.01),
            name=None):
@@ -156,15 +135,17 @@ class QModel:
     def get_weights(self):
         return self.q_model.get_weights()
 
-    def save_model(self, directory):
+    def save_model(self, filename):
         try:
-            self.q_model.save(filepath=directory, overwrite=True)
-        except:
-            print('Saving failed')
+            self.q_model.save_weights(filepath=filename, save_format='h5')
+        except Exception as e:
+            print(f'Saving failed: {e}')
 
-    def loaf_model(self, directory):
+    def load_model(self, directory):
         try:
-            self.q_model.load(filepath=directory)
+            self.q_model.load_weights(filepath=os.path.join(directory, f'{self.__name__}.h5'))
+        except Exception as e:
+            print(f'Loading failed: {e}')
 
     def set_target_models(self, q_target_1, q_target_2):
         self.q_target_first = q_target_1
@@ -192,23 +173,6 @@ class QModel:
         return_value = hist.history['loss']
 
         return return_value
-
-    def create_buffers(self, buffer=None):
-        if buffer is None:
-            self.replay_buffer = ReplayBuffer(obs_dim=self.obs_dim, act_dim=self.act_dim, max_size=int(1e6))
-            try:
-                files = []
-                directory = self.directory + 'data/'
-                for f in os.listdir(directory):
-                    if 'buffer_data' in f and 'pkl' in f:
-                        files.append(f)
-                files.sort()
-                self.replay_buffer.read_from_pkl(name=files[-1], directory=directory)
-                print('Buffer data loaded for ' + self.__name__, files[-1])
-            except:
-                print('Buffer data empty for ' + self.__name__, files)
-        else:
-            self.replay_buffer = buffer
 
     class CustomModel(Model):
 
@@ -264,10 +228,19 @@ class QModel:
 class NAF2(object):
     MAX_STEPS = 1000
 
-    def __init__(self, env, buffer_size=int(1e6), train_every=1, training_info=dict(),
+    def __init__(self, env, buffer_size=int(1e6), train_every=1,
+                 training_info={'polyak':0.999,
+                                'batch_size':100,
+                                'steps_per_batch':10,
+                                'epochs':1,
+                                'learning_rate':1e-3,
+                                'discount':0.9999},
                  eval_info=dict(),
+                 nafnet_info={'hidden_sizes': [100, 100],
+                              'activation': tf.nn.tanh,
+                              'kernel_initializer': tf.random_normal_initializer(0, 0.05)},
                  save_frequency=1000, log_frequency=100, directory=None,
-                 tb_log=None, q_smoothing_sigma=0.02, q_smoothing_clip=0.05, nafnet_info=dict()):
+                 tb_log=None, q_smoothing_sigma=0.02, q_smoothing_clip=0.05, soft_init=False):
         """
         :param env: open gym environment to be solved
         :dict training_info: dictionary containing info for the training of the network
@@ -288,10 +261,10 @@ class NAF2(object):
         self.save_frequency = save_frequency
         self.log_frequency = log_frequency
 
-        self.eval_env = eval_info.get('eval_env', None)
+        self.eval_env = eval_info.get('eval_env', None) # If None, no evaluation is done during training
         self.eval_frequency = eval_info.get('frequency', 1000)
         self.eval_nb_eps = eval_info.get('nb_episodes', 10)
-        self.eval_max_steps = eval_info.get('max_steps', 100)
+        self.eval_max_steps = eval_info.get('max_ep_steps', 100)
 
         self.q_smoothing_sigma = q_smoothing_sigma
         self.q_smoothing_clip = q_smoothing_clip
@@ -313,36 +286,31 @@ class NAF2(object):
         self.directory = directory
         self.tb_writer = tf.summary.create_file_writer(tb_log).set_as_default()
 
-        if not os.path.exists(directory):
-            os.makedirs(directory)
-        else:
-            assert False, 'Directory passed already exists'
+        if not soft_init:
+            if not os.path.exists(directory):
+                os.makedirs(directory)
+            else:
+                assert False, 'Directory passed already exists'
 
         # Create working models
         self.q_main_model_1 = QModel(obs_dim=self.obs_dim, act_dim=self.act_dim,
                                      name='q_main_model_1',
                                      training_info=training_info,
-                                     directory=self.directory,
-                                     tb_log=tb_log,
                                      save_frequency=self.save_frequency,
                                      **nafnet_info)
         self.q_main_model_2 = QModel(obs_dim=self.obs_dim, act_dim=self.act_dim,
                                      name='q_main_model_2',
                                      training_info=training_info,
-                                     directory=self.directory,
-                                     tb_log=tb_log,
                                      save_frequency=self.save_frequency,
                                      **nafnet_info)
 
         # Create target models
         self.q_target_model_1 = QModel(obs_dim=self.obs_dim, act_dim=self.act_dim,
                                        name='q_target_model_1',
-                                       directory=self.directory,
                                        training_info=training_info,
                                        **nafnet_info)
         self.q_target_model_2 = QModel(obs_dim=self.obs_dim, act_dim=self.act_dim,
                                        name='q_target_model_2',
-                                       directory=self.directory,
                                        training_info=training_info,
                                        **nafnet_info)
 
@@ -357,7 +325,10 @@ class NAF2(object):
         self.it = 0
         self.memory = ReplayBuffer(self.obs_dim, self.act_dim, buffer_size)
 
-    def predict(self, model, state, is_train):
+    def predict(self, state):
+        return self._predict(self.q_target_model_1, state, False)
+
+    def _predict(self, model, state, is_train):
         if is_train and self.memory.size < self.warm_up_steps:
             # action = np.random.uniform(-1, 1, self.action_size)
             action = self.env.action_space.sample()
@@ -377,105 +348,152 @@ class NAF2(object):
             action = model.get_action([state])
             return action
 
-    def training(self, warm_up_steps=0, initial_episode_length=5, **kwargs):
+    def training(self, nb_steps=int(1e5), max_ep_steps=100, warm_up_steps=100, initial_episode_length=5):
         self.warm_up_steps = warm_up_steps
         self.initial_episode_length = initial_episode_length
 
-        if 'max_episodes' in kwargs:
-            self.max_episodes = kwargs.get('max_episodes')
-        if 'max_steps' in kwargs:
-            self.max_steps = kwargs.get('max_steps')
+        self.max_ep_steps = max_ep_steps
+        self.nb_steps = nb_steps
 
-        self._training(is_train=True)
+        self._training()
 
-    def _training(self, is_train=True):
-        pbar = tqdm(total=self.max_episodes * self.max_steps)
-        for index in range(0, self.max_episodes):
-            self.idx_episode = index
+    @property
+    def _warmup_done(self):
+        return self.memory.size > self.warm_up_steps
 
-            o = self.env.reset()
-            for t in range(0, self.max_steps):
-                # 1. predict
-                a = np.squeeze(self.predict(self.q_main_model_1, o, is_train))
-                o2, r, d, _ = self.env.step(a)
+    def _training(self):
+        self.idx_episode = 0
+        ep_step = 0
+        o = self.env.reset()
+        for t in tqdm(range(0, self.nb_steps)):
+            self.it = t
+            # 1. predict
+            a = np.squeeze(self._predict(model=self.q_main_model_1, state=o, is_train=True))
+            o2, r, d, _ = self.env.step(a)
+            ep_step += 1
 
-                if is_train:
-                    self.memory.store(o, a, r, o2, d)
+            self.memory.store(o, a, r, o2, d)
 
-                o = o2
-                d = False if t == self.max_steps - 1 else d
+            o = o2
+            d = False if ep_step == self.max_ep_steps else d
 
-                if t > 0 and t % self.initial_episode_length == 0 and self.memory.size <= self.warm_up_steps:
-                    o = self.env.reset()
-                    # print('Initial reset at ', t)
+            # Initial reset allows us to collect samples close to the initial state, without getting crazy states
+            if t > 0 and t % self.initial_episode_length == 0 and not self._warmup_done:
+                o = self.env.reset()
+                ep_step = 0
+            elif (ep_step % self.max_ep_steps == 0 or d) and self._warmup_done:
+                o = self.env.reset()
+                self.idx_episode += 1
+                ep_step = 0
 
-                # 2. train
-                if self.it % self.train_every == 0 and is_train and self.memory.size > self.warm_up_steps:
-                    loss_q1 = self.q_main_model_1.\
+
+            # 2. train & log
+            if self._warmup_done:
+                if t % self.train_every == 0:
+                    loss_q1 = self.q_main_model_1. \
                         batch_training_step(self.memory.sample_batch(self.batch_size))[-1]
-                    loss_q2 = self.q_main_model_2.\
+                    loss_q2 = self.q_main_model_2. \
                         batch_training_step(self.memory.sample_batch(self.batch_size))[-1]
 
                     self.losses_q1.append(loss_q1)
                     self.losses_q2.append(loss_q2)
 
-                if self.it > 0 and self.memory.size > self.warm_up_steps:
-                    if self.it % self.save_frequency == 0:
-                        #print(f'-> Saving checkpoint on step {self.it}')
-                        self.save_checkpoint()
+                if t % self.eval_frequency == 0:
+                    self.evaluate()
 
-                    if self.it % self.eval_frequency == 0:
-                        #print(f'-> Evaluating on step {self.it}')
-                        self.evaluate()
+                if t % self.log_frequency == 0:
+                    lookback = self.log_frequency//self.train_every
+                    tf.summary.scalar('loss/q_main_model_1', data=np.mean(self.losses_q1[-lookback:]), step=self.it)
+                    tf.summary.scalar('loss/q_main_model_2', data=np.mean(self.losses_q2[-lookback:]), step=self.it)
+                    tf.summary.flush()
 
-                    if self.it % self.log_frequency == 0:
-                        #print(f'-> Logging on step {self.it}')
-                        lookback = self.log_frequency//self.train_every
-                        tf.summary.scalar('loss/q_main_model_1', data=np.mean(self.losses_q1[-lookback:]), step=self.it)
-                        tf.summary.scalar('loss/q_main_model_2', data=np.mean(self.losses_q2[-lookback:]), step=self.it)
-                        tf.summary.flush()
+                if t % self.save_frequency == 0:
+                    self.save_checkpoint()
 
-                self.it += 1
-                pbar.update(1)
-                if d:
-                    break
-        pbar.close()
+    # def _training(self, is_train=True):
+    #     pbar = tqdm(total=self.max_episodes * self.max_ep_steps)
+    #     for index in range(0, self.max_episodes):
+    #         self.idx_episode = index
+    #
+    #         o = self.env.reset()
+    #         for t in range(0, self.max_ep_steps):
+    #             # 1. predict
+    #             a = np.squeeze(self._predict(self.q_main_model_1, o, is_train))
+    #             o2, r, d, _ = self.env.step(a)
+    #
+    #             if is_train:
+    #                 self.memory.store(o, a, r, o2, d)
+    #
+    #             o = o2
+    #             d = False if t == self.max_ep_steps - 1 else d
+    #
+    #             if t > 0 and t % self.initial_episode_length == 0 and self.memory.size <= self.warm_up_steps:
+    #                 o = self.env.reset()
+    #                 # print('Initial reset at ', t)
+    #
+    #             # 2. train
+    #             if self.it % self.train_every == 0 and is_train and self.memory.size > self.warm_up_steps:
+    #                 loss_q1 = self.q_main_model_1.\
+    #                     batch_training_step(self.memory.sample_batch(self.batch_size))[-1]
+    #                 loss_q2 = self.q_main_model_2.\
+    #                     batch_training_step(self.memory.sample_batch(self.batch_size))[-1]
+    #
+    #                 self.losses_q1.append(loss_q1)
+    #                 self.losses_q2.append(loss_q2)
+    #
+    #             if self.it > 0 and self.memory.size > self.warm_up_steps:
+    #                 if self.it % self.save_frequency == 0:
+    #                     #print(f'-> Saving checkpoint on step {self.it}')
+    #                     self.save_checkpoint()
+    #
+    #                 if self.it % self.eval_frequency == 0:
+    #                     #print(f'-> Evaluating on step {self.it}')
+    #                     self.evaluate()
+    #
+    #                 if self.it % self.log_frequency == 0:
+    #                     #print(f'-> Logging on step {self.it}')
+    #                     lookback = self.log_frequency//self.train_every
+    #                     tf.summary.scalar('loss/q_main_model_1', data=np.mean(self.losses_q1[-lookback:]), step=self.it)
+    #                     tf.summary.scalar('loss/q_main_model_2', data=np.mean(self.losses_q2[-lookback:]), step=self.it)
+    #                     tf.summary.flush()
+    #
+    #             self.it += 1
+    #             pbar.update(1)
+    #             if d:
+    #                 break
+    #     pbar.close()
 
     def save_checkpoint(self, save_buffer=True, save_main_models=True, save_target_models=True):
         if not any((save_buffer, save_main_models, save_target_models)):
             print('Nothing is marked for saving')
             return
 
-        # print(f'-> Saving checkpoint on step {self.it}')
         number = str(self.it).zfill(4)
         par_dir = os.path.join(self.directory, f'step_{number}')
+        os.makedirs(par_dir)
         if save_buffer:
-            # print('\t`-> Saving buffer')
-            buffer_dir = os.path.join(par_dir, 'buffer_data')
-            self.memory.save_to_pkl(name=f'buffer_data_{number}.pkl', directory=buffer_dir)
+            self.memory.save_to_pkl(name=f'buffer_data.pkl', directory=par_dir)
+
         if save_main_models:
-            # print('\t`-> Saving main models')
-            main_models_dir = os.path.join(par_dir, 'main_models')
+            # main_models_dir = os.path.join(par_dir, 'main_models')
             for model in (self.q_main_model_1, self.q_main_model_2):
-                model.save_model(os.path.join(main_models_dir, model.__name__))
+                model.save_model(os.path.join(par_dir, f'{model.__name__}.h5'))
         if save_target_models:
-            # print('\t`-> Saving target models')
-            target_models_dir = os.path.join(par_dir, 'target_models')
+            # target_models_dir = os.path.join(par_dir, 'target_models')
             for model in (self.q_target_model_1, self.q_target_model_2):
-                model.save_model(os.path.join(target_models_dir, model.__name__))
+                model.save_model(os.path.join(par_dir, f'{model.__name__}.h5'))
 
     def load_checkpoint(self, model_dir, chkpt_step, load_buffer=True):
+        self.directory = model_dir
         number = str(chkpt_step).zfill(4)
         par_dir = os.path.join(model_dir, f'step_{number}')
         if load_buffer:
-            self.memory.read_from_pkl(name=f'buffer_data_{number}.pkl',
-                                      directory=os.path.join(par_dir, 'buffer_data'))
-        main_models_dir = os.path.join(par_dir, 'main_models')
-        targe_models_dir = os.path.join(par_dir, 'target_models')
-        self.q_main_model_1 = QModel.
-        self.q_main_model_2 =
-        self.q_target_model_1 =
-        self.q_target_model_2 =
+            self.memory.read_from_pkl(name=f'buffer_data.pkl',
+                                      directory=par_dir)
+        self.q_main_model_1.load_model(par_dir)
+        self.q_main_model_2.load_model(par_dir)
+        self.q_target_model_1.load_model(par_dir)
+        self.q_target_model_2.load_model(par_dir)
 
     def evaluate(self):
         if self.eval_env is None:
@@ -487,7 +505,7 @@ class NAF2(object):
             o = env.reset()
             ret.append(0.0)
             for step in range(self.eval_max_steps):
-                a = self.predict(self.q_target_model_1, o, False).squeeze()
+                a = self._predict(self.q_target_model_1, o, False).squeeze()
                 o, r, d, _ = env.step(a)
                 ret[-1] += r
                 if d:

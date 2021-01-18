@@ -15,7 +15,6 @@ class RandomEnv(gym.Env):
 	OBS_LIM = 5
 
 	# reward_accumulated_limit = -10
-	EP_LEN_LIM = 100
 	REW_SCALE = 0.1
 
 	def __init__(self, n_obs, n_act, rm, noise_std=None):
@@ -96,24 +95,14 @@ class RandomEnv(gym.Env):
 
 	def is_done(self):
 		# Reach goal
-		if np.mean(self._reward_deque) > self._reward_thresh or \
-				np.max(np.abs(self._current_state)) > RandomEnv.OBS_LIM:
+		if np.mean(self._reward_deque) > self._reward_thresh:# or np.max(np.abs(self._current_state)) > RandomEnv.OBS_LIM:
 			done = True
 		else:
 			done = False
-
-		# Reach maximum time limit
-		# if self.it < QFBEnv.episode_length_limit:
-		#     done = False
-		# else:
-		#     done = True
-
 		return done
 
 	def get_optimal_action(self, state):
-		# state = np.multiply(state, self.Q_limit_hz)
 		action_optimal = self.pi.T.dot(state)
-		# action_optimal = np.clip(action_optimal, -RandomEnv.ACT_LIM, RandomEnv.ACT_LIM)
 
 		return -action_optimal
 

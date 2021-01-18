@@ -8,11 +8,13 @@ from envs.random_env import RandomEnv
 from envs.normalize_env import NormalizeEnv
 from naf2 import NAF2
 
+tf.get_logger().setLevel('ERROR')
+
 random_seed = 123
 
 if __name__ == '__main__':
-    n_obs = 10
-    n_act = 10
+    n_obs = 5
+    n_act = 5
     model_name = f'NAF2_{n_obs}x{n_act}_{dt.strftime(dt.now(), "%m%d%y_%H%M")}'
     model_dir = os.path.join('models', model_name)
     log_dir = os.path.join('logs', model_name)
@@ -34,14 +36,14 @@ if __name__ == '__main__':
     eval_info = dict(eval_env=eval_env,
                      frequency=100,
                      nb_episodes=10,
-                     max_steps=100)
+                     max_ep_steps=100)
 
     agent = NAF2(env=env,
-                 buffer_size=int(1e6),
+                 buffer_size=int(1e5),
                  train_every=1,
                  training_info=training_info,
                  eval_info=eval_info,
-                 save_frequency=1000,
+                 save_frequency=100,
                  log_frequency=10,
                  directory=model_dir,
                  tb_log=log_dir,
@@ -49,4 +51,7 @@ if __name__ == '__main__':
                  q_smoothing_clip=0.05,
                  nafnet_info=nafnet_info)
 
-    agent.training(warm_up_steps=1000, max_episodes=1000, max_steps=300)
+    try:
+        agent.training(nb_steps=int(1e5), max_ep_steps=50, warm_up_steps=200, initial_episode_length=5)
+    except KeyboardInterrupt:
+        print('exiting')
