@@ -10,7 +10,14 @@ from naf2 import NAF2
 
 random_seed = 123
 
+# use CPU
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
+N_EPISODES = 10
+MAX_STEPS = 50
 def plot_individual(agent, env, opt_env):
+    global MAX_STEPS, N_EPISODES
+
     n_obs = env.obs_dimension
     n_act = env.act_dimension
 
@@ -70,9 +77,7 @@ def plot_individual(agent, env, opt_env):
 
     plt.ion()
 
-    n_episodes = 10
-    max_steps = 200
-    for ep in range(n_episodes):
+    for ep in range(N_EPISODES):
         o = env.reset()
         opt_o = o.copy()
         opt_env.reset(opt_o)
@@ -95,7 +100,7 @@ def plot_individual(agent, env, opt_env):
         cumu_rewards = []
         cumu_opt_rewards = []
         ACTION_SCALE = 1
-        for step in range(max_steps):
+        for step in range(MAX_STEPS):
             # Put some obs noise to test agent
             # FInd limiting noise
             a = agent.predict(o).squeeze()
@@ -133,10 +138,10 @@ def plot_individual(agent, env, opt_env):
                 break
 
 if __name__ == '__main__':
-    n_obs = 10
-    n_act = 10
-    model_name = f'NAF2_{n_obs}x{n_act}_011821_0942'
-    chkpt_step = 46000
+    n_obs = 5
+    n_act = 5
+    model_name = f'NAF2_{n_obs}x{n_act}_011821_1606'
+    chkpt_step = 10000
     model_dir = os.path.join('models', model_name)
     log_dir = os.path.join('logs', model_name)
 
@@ -151,5 +156,6 @@ if __name__ == '__main__':
 
     # agent.training(warm_up_steps=1000, max_episodes=1000, max_steps=300)
     agent.load_checkpoint(model_dir=model_dir, chkpt_step=chkpt_step, load_buffer=False)
+
 
     plot_individual(agent, env, opt_env)

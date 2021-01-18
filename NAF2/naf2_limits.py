@@ -34,7 +34,7 @@ if __name__ == '__main__':
                        activation=tf.nn.tanh,
                        kernel_initializer=tf.random_normal_initializer(0, 0.05, seed=random_seed))
     eval_info = dict(eval_env=eval_env,
-                     frequency=100,
+                     frequency=1000,
                      nb_episodes=10,
                      max_ep_steps=100)
 
@@ -43,8 +43,8 @@ if __name__ == '__main__':
                  train_every=1,
                  training_info=training_info,
                  eval_info=eval_info,
-                 save_frequency=100,
-                 log_frequency=10,
+                 save_frequency=2000,
+                 log_frequency=100,
                  directory=model_dir,
                  tb_log=log_dir,
                  q_smoothing_sigma=0.02,
