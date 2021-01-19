@@ -9,6 +9,8 @@ from envs.normalize_env import NormalizeEnv
 from naf2 import NAF2
 
 tf.get_logger().setLevel('ERROR')
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
 
 random_seed = 123
 
@@ -34,24 +36,28 @@ if __name__ == '__main__':
                        activation=tf.nn.tanh,
                        kernel_initializer=tf.random_normal_initializer(0, 0.05, seed=random_seed))
     eval_info = dict(eval_env=eval_env,
-                     frequency=1000,
-                     nb_episodes=10,
+                     frequency=50,
+                     nb_episodes=3,
                      max_ep_steps=100)
 
+    # linearly decaying noise function
+    noise_fn = lambda act, i: act + np.random.randn(n_act) * max(1 - i/75, 0)
     agent = NAF2(env=env,
-                 buffer_size=int(1e5),
+                 buffer_size=int(5e3),
                  train_every=1,
                  training_info=training_info,
                  eval_info=eval_info,
-                 save_frequency=2000,
-                 log_frequency=100,
+                 save_frequency=1000,
+                 log_frequency=10,
                  directory=model_dir,
                  tb_log=log_dir,
+                 # q_smoothing_sigma=0.02,
                  q_smoothing_sigma=0.02,
                  q_smoothing_clip=0.05,
-                 nafnet_info=nafnet_info)
+                 nafnet_info=nafnet_info,
+                 noise_fn=noise_fn)
 
     try:
-        agent.training(nb_steps=int(1e5), max_ep_steps=50, warm_up_steps=200, initial_episode_length=5)
+        agent.training(nb_steps=int(5e3), max_ep_steps=50, warm_up_steps=200, initial_episode_length=5)
     except KeyboardInterrupt:
         print('exiting')

@@ -157,6 +157,8 @@ class QModel:
         dataset = tf.data.Dataset.from_tensor_slices(batch)  # .repeat(1).shuffle(buffer_size=10000)
         train_dataset = dataset.batch(self.steps_per_batch)
 
+        '''
+        put the following in a range(epochs) and apply polyak per epoch'''
         hist = self.q_model.fit(train_dataset,
                                 verbose=0,
                                 shuffle=True,
@@ -240,7 +242,8 @@ class NAF2(object):
                               'activation': tf.nn.tanh,
                               'kernel_initializer': tf.random_normal_initializer(0, 0.05)},
                  save_frequency=1000, log_frequency=100, directory=None,
-                 tb_log=None, q_smoothing_sigma=0.02, q_smoothing_clip=0.05, soft_init=False):
+                 tb_log=None, q_smoothing_sigma=0.02, q_smoothing_clip=0.05, soft_init=False,
+                 noise_fn=None):
         """
         :param env: open gym environment to be solved
         :dict training_info: dictionary containing info for the training of the network
@@ -274,7 +277,10 @@ class NAF2(object):
         self.vs = []
         self.vs2 = []
 
-        self.noise_function = lambda action, nr: action + np.random.randn(self.act_dim) * 1 / (nr + 1)
+        if noise_fn is None:
+            self.noise_function = lambda action, nr: action + np.random.randn(self.act_dim) * 1 / (nr + 1)
+        else:
+            self.noise_function = noise_fn
 
         self.idx_episode = None
 
@@ -325,6 +331,7 @@ class NAF2(object):
         self.it = 0
         self.memory = ReplayBuffer(self.obs_dim, self.act_dim, buffer_size)
 
+    # deterministic predict
     def predict(self, state):
         return self._predict(self.q_target_model_1, state, False)
 
@@ -333,20 +340,32 @@ class NAF2(object):
             # action = np.random.uniform(-1, 1, self.action_size)
             action = self.env.action_space.sample()
             return np.array(action)
-
-        # Add small noise on the controller
         elif is_train:
-            action = self.noise_function(np.squeeze(model.get_action([state])),self.idx_episode)
-            if self.q_smoothing_clip is None:
-                return_value = np.clip(action, -1, 1)
-            else:
-                return_value = np.clip(action + np.clip(self.q_smoothing_sigma * np.random.randn(self.act_dim),
-                                                        -self.q_smoothing_clip, self.q_smoothing_clip),
-                                       -1, 1)
-            return return_value
+            action = model.get_action([state])
+            action = self.noise_function(action, self.idx_episode)
+            return action
         else:
             action = model.get_action([state])
             return action
+
+        # if is_train and self.memory.size < self.warm_up_steps:
+        #     # action = np.random.uniform(-1, 1, self.action_size)
+        #     action = self.env.action_space.sample()
+        #     return np.array(action)
+        #
+        # # Add small noise on the controller
+        # elif is_train:
+        #     action = self.noise_function(np.squeeze(model.get_action([state])),self.idx_episode)
+        #     if self.q_smoothing_clip is None:
+        #         return_value = np.clip(action, -1, 1)
+        #     else:
+        #         return_value = np.clip(action + np.clip(self.q_smoothing_sigma * np.random.randn(self.act_dim),
+        #                                                 -self.q_smoothing_clip, self.q_smoothing_clip),
+        #                                -1, 1)
+        #     return return_value
+        # else:
+        #     action = model.get_action([state])
+        #     return action
 
     def training(self, nb_steps=int(1e5), max_ep_steps=100, warm_up_steps=100, initial_episode_length=5):
         self.warm_up_steps = warm_up_steps
@@ -365,10 +384,20 @@ class NAF2(object):
         self.idx_episode = 0
         ep_step = 0
         o = self.env.reset()
+        ep_len = []
         for t in tqdm(range(0, self.nb_steps)):
             self.it = t
             # 1. predict
             a = np.squeeze(self._predict(model=self.q_main_model_1, state=o, is_train=True))
+
+
+            if self.q_smoothing_clip is None:
+                a = np.clip(a, -1, 1)
+            else:
+                a = np.clip(a + np.clip(self.q_smoothing_sigma * np.random.randn(self.act_dim),
+                                                        -self.q_smoothing_clip, self.q_smoothing_clip),
+                                       -1, 1)
+
             o2, r, d, _ = self.env.step(a)
             ep_step += 1
 
@@ -384,6 +413,7 @@ class NAF2(object):
             elif (ep_step % self.max_ep_steps == 0 or d) and self._warmup_done:
                 o = self.env.reset()
                 self.idx_episode += 1
+                ep_len.append(ep_step)
                 ep_step = 0
 
 
@@ -405,6 +435,8 @@ class NAF2(object):
                     lookback = self.log_frequency//self.train_every
                     tf.summary.scalar('loss/q_main_model_1', data=np.mean(self.losses_q1[-lookback:]), step=self.it)
                     tf.summary.scalar('loss/q_main_model_2', data=np.mean(self.losses_q2[-lookback:]), step=self.it)
+                    tf.summary.scalar('training/average_episode_length', data=np.mean(ep_len[-5:]), step=self.it)
+                    tf.summary.scalar('info/episode_idx', data=self.idx_episode, step=self.it)
                     tf.summary.flush()
 
                 if t % self.save_frequency == 0:
@@ -511,7 +543,7 @@ class NAF2(object):
                 if d:
                     break
         mean_return = np.mean(ret)
-        tf.summary.scalar('episode_return', data=mean_return, step=self.it)
+        tf.summary.scalar('training/episode_return', data=mean_return, step=self.it)
 
     def visualize(self):
         state = np.zeros(self.env.observation_space.shape)

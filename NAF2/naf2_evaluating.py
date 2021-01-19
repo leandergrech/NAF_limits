@@ -14,7 +14,7 @@ random_seed = 123
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 N_EPISODES = 10
-MAX_STEPS = 50
+MAX_STEPS = 80
 def plot_individual(agent, env, opt_env):
     global MAX_STEPS, N_EPISODES
 
@@ -140,8 +140,8 @@ def plot_individual(agent, env, opt_env):
 if __name__ == '__main__':
     n_obs = 5
     n_act = 5
-    model_name = f'NAF2_{n_obs}x{n_act}_011821_1606'
-    chkpt_step = 34000
+    model_name = f'NAF2_{n_obs}x{n_act}_011921_1501'
+    chkpt_step = 1000
     model_dir = os.path.join('models', model_name)
     log_dir = os.path.join('logs', model_name)
 
