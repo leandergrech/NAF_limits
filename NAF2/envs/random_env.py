@@ -73,6 +73,8 @@ class RandomEnv(gym.Env):
 		self._prev_state = self._current_state
 		self._current_state = self._current_state + trim_state
 
+		self._current_state = np.clip(self._current_state, -self.OBS_LIM, self.OBS_LIM)
+
 		self._reward = self.objective(self._current_state)
 		self._reward_deque.append(self._reward)
 
