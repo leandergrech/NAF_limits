@@ -141,7 +141,7 @@ if __name__ == '__main__':
     n_obs = 5
     n_act = 5
     model_name = f'NAF2_{n_obs}x{n_act}_011821_1606'
-    chkpt_step = 10000
+    chkpt_step = 34000
     model_dir = os.path.join('models', model_name)
     log_dir = os.path.join('logs', model_name)
 
