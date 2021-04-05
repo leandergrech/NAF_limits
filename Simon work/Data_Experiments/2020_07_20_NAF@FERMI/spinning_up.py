@@ -5,10 +5,7 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 # import PyQt5
-from spinup import td3_tf1 as td3
 from spinup import sac_tf1 as sac
-from spinup.algos.tf1.ppo.ppo import ppo
-from spinup.algos.tf1.trpo.trpo import trpo
 
 from local_fel_simulated_env import FelLocalEnv
 # from pendulum import PendulumEnv as simpleEnv

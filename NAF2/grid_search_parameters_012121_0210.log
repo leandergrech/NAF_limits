@@ -1,0 +1,8 @@
+NAF2_10x10_012121_0210 -> {'n_obs': 10, 'n_act': 10, 'layers': [100, 100], 'noise_decay_eps': 40, 'buffer_size': 5000, 'nb_steps': 80001, 'save_frequency': 2000}
+NAF2_10x10_012121_0558 -> {'n_obs': 10, 'n_act': 10, 'layers': [100, 100], 'noise_decay_eps': 40, 'buffer_size': 15000, 'nb_steps': 80001, 'save_frequency': 2000}
+NAF2_10x10_012121_0950 -> {'n_obs': 10, 'n_act': 10, 'layers': [100, 100], 'noise_decay_eps': 60, 'buffer_size': 5000, 'nb_steps': 80001, 'save_frequency': 2000}
+NAF2_10x10_012121_1345 -> {'n_obs': 10, 'n_act': 10, 'layers': [100, 100], 'noise_decay_eps': 60, 'buffer_size': 15000, 'nb_steps': 80001, 'save_frequency': 2000}
+NAF2_10x10_012121_1743 -> {'n_obs': 10, 'n_act': 10, 'layers': [200, 200], 'noise_decay_eps': 40, 'buffer_size': 5000, 'nb_steps': 80001, 'save_frequency': 2000}
+NAF2_10x10_012121_2207 -> {'n_obs': 10, 'n_act': 10, 'layers': [200, 200], 'noise_decay_eps': 40, 'buffer_size': 15000, 'nb_steps': 80001, 'save_frequency': 2000}
+NAF2_10x10_012221_0226 -> {'n_obs': 10, 'n_act': 10, 'layers': [200, 200], 'noise_decay_eps': 60, 'buffer_size': 5000, 'nb_steps': 80001, 'save_frequency': 2000}
+NAF2_10x10_012221_0639 -> {'n_obs': 10, 'n_act': 10, 'layers': [200, 200], 'noise_decay_eps': 60, 'buffer_size': 15000, 'nb_steps': 80001, 'save_frequency': 2000}

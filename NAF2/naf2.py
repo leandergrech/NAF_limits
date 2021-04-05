@@ -30,6 +30,7 @@ class CustomTensorBoard(TensorBoard):
         """Runs metrics and histogram summaries at epoch end."""
         super(CustomTensorBoard, self).on_epoch_end(self.epoch, logs)
 
+
 class QModel:
     """Artificial neural net holding the state-action value function in a simple analytical form"""
 
