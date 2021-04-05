@@ -49,15 +49,10 @@ class QModel:
 
         self.polyak = training_info.get('polyak', 0.999)
         self.discount = training_info.get('discount', 0.999)
-        self.steps_per_batch = training_info.get('steps_per_batch', 1)
+        self.steps_per_batch = training_info.get('steps_per_batch', 10)
         self.batch_size = training_info.get('batch_size', 1)
         self.learning_rate = training_info.get('learning_rate', 1e-3)
-        
-        self.training_params = training_info
-
-
-
-        self.kernel_initializer = kernel_initializer
+        self.epochs = training_info.get('epochs')
 
         self.init = True
 
@@ -71,16 +66,16 @@ class QModel:
         # create a shared network for the variables
         h = inputs_state
         for hidden_dim in self.hidden_sizes:
-            h = self.fc(h, hidden_dim, kernel_initializer=self.kernel_initializer, activation=self.activation)
+            h = self.fc(h, hidden_dim, kernel_initializer=kernel_initializer, activation=self.activation)
 
         # Output - state-value function, where the reward is assumed to be negative
         V = -self.fc(h, 1, activation=tf.nn.leaky_relu,
-                     kernel_initializer=self.kernel_initializer, name='V')
+                     kernel_initializer=kernel_initializer, name='V')
         # Output - for the matrix L
         l = self.fc(h, (self.act_dim * (self.act_dim + 1) / 2),
-                    kernel_initializer=self.kernel_initializer, name='l')
+                    kernel_initializer=kernel_initializer, name='l')
         # Output - policy pi
-        mu = self.fc(h, self.act_dim, kernel_initializer=self.kernel_initializer, name='mu')
+        mu = self.fc(h, self.act_dim, kernel_initializer=kernel_initializer, name='mu')
         self.value_model = Model([inputs_state], V, name='value_model')
         self.action_model = Model([inputs_state], mu, name='action_model')
 
@@ -163,7 +158,8 @@ class QModel:
                                 verbose=0,
                                 shuffle=True,
                                 # callbacks=self.tensorboard_callback,
-                                batch_size=self.training_params['batch_size'])
+                                # batch_size=self.training_params['batch_size'],
+                                epochs=self.epochs)
         self.q_target_first.polyak_average(self.q_model.get_weights())#, self.polyak, name=self.q_model.__name__)
 
         # if int(self.ckpt.step) % self.save_frequency == 0:
@@ -286,8 +282,7 @@ class NAF2(object):
 
         self.training_info = training_info
         self.learning_rate = training_info.get('learning_rate', 1e-3)
-        self.batch_size = training_info.get('batch_size', 128)
-        self.steps_per_batch = training_info.get('steps_per_batch', 10)
+        self.batch_size = training_info.get('batch_size', 100)
 
         self.directory = directory
         self.tb_writer = tf.summary.create_file_writer(tb_log).set_as_default()
@@ -385,11 +380,11 @@ class NAF2(object):
         ep_step = 0
         o = self.env.reset()
         ep_len = []
-        for t in tqdm(range(0, self.nb_steps)):
+        pbar = tqdm(total=self.nb_steps)
+        for t in range(0, self.nb_steps):
             self.it = t
             # 1. predict
             a = np.squeeze(self._predict(model=self.q_main_model_1, state=o, is_train=True))
-
 
             if self.q_smoothing_clip is None:
                 a = np.clip(a, -1, 1)
@@ -435,12 +430,16 @@ class NAF2(object):
                     lookback = self.log_frequency//self.train_every
                     tf.summary.scalar('loss/q_main_model_1', data=np.mean(self.losses_q1[-lookback:]), step=self.it)
                     tf.summary.scalar('loss/q_main_model_2', data=np.mean(self.losses_q2[-lookback:]), step=self.it)
-                    tf.summary.scalar('training/average_episode_length', data=np.mean(ep_len[-5:]), step=self.it)
+                    if self.idx_episode > 0:
+                        tf.summary.scalar('training/average_episode_length', data=np.mean(ep_len[-lookback:]), step=self.it)
                     tf.summary.scalar('info/episode_idx', data=self.idx_episode, step=self.it)
                     tf.summary.flush()
 
                 if t % self.save_frequency == 0:
                     self.save_checkpoint()
+
+            if t % int(self.nb_steps/100) == 0:
+                pbar.update(int(self.nb_steps/100))
 
     # def _training(self, is_train=True):
     #     pbar = tqdm(total=self.max_episodes * self.max_ep_steps)

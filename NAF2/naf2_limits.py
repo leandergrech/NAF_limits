@@ -36,12 +36,13 @@ if __name__ == '__main__':
                        activation=tf.nn.tanh,
                        kernel_initializer=tf.random_normal_initializer(0, 0.05, seed=random_seed))
     eval_info = dict(eval_env=eval_env,
-                     frequency=50,
+                     frequency=100,
                      nb_episodes=3,
-                     max_ep_steps=100)
+                     max_ep_steps=50)
 
     # linearly decaying noise function
-    noise_fn = lambda act, i: act + np.random.randn(n_act) * max(1 - i/75, 0)
+    noise_episode_thresh = 40
+    noise_fn = lambda act, i: act + np.random.randn(n_act) * max(1 - i/noise_episode_thresh, 0)
     agent = NAF2(env=env,
                  buffer_size=int(5e3),
                  train_every=1,
@@ -58,6 +59,6 @@ if __name__ == '__main__':
                  noise_fn=noise_fn)
 
     try:
-        agent.training(nb_steps=int(5e3), max_ep_steps=50, warm_up_steps=200, initial_episode_length=5)
+        agent.training(nb_steps=int(5e3+1), max_ep_steps=50, warm_up_steps=200, initial_episode_length=5)
     except KeyboardInterrupt:
         print('exiting')

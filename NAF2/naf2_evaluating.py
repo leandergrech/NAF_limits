@@ -140,8 +140,8 @@ def plot_individual(agent, env, opt_env):
 if __name__ == '__main__':
     n_obs = 5
     n_act = 5
-    model_name = f'NAF2_{n_obs}x{n_act}_011921_1501'
-    chkpt_step = 1000
+    model_name = f'NAF2_{n_obs}x{n_act}_011921_1755'
+    chkpt_step = 4000
     model_dir = os.path.join('models', model_name)
     log_dir = os.path.join('logs', model_name)
 
